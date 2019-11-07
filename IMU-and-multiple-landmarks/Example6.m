@@ -30,7 +30,7 @@ ba          = mean(Groundtruth(:,15:17));
 N = 5; % numbers of landmark
 % Map = zeros(3,N);
 % Map(1:2,:) = 4*randn(2,N);
-Map = [-0.5560   -0.1934    1.8198   -2.7144    0.8340;
+Map = 10*[-0.5560   -0.1934    1.8198   -2.7144    0.8340;
         0.1306   1.4716   -0.2398   1.8803   -1.4323;
         0         0         0         0         0];
 
@@ -57,7 +57,7 @@ v  = Groundtruth(1,9:11)';
 u = [1 0 0]';%randn(3,1);%
 u = u/norm(u);
 theta = 0.1*pi;
-Rhat = R*expm(theta*Skew(u)); %R;%
+Rhat = expm(theta*Skew(u))*R; %R;%
 phat = 0*p;
 vhat = 0*v;
 mhat = 0*Map(:,2:end);%randn(3,N-1);
@@ -75,6 +75,23 @@ Tout  = IMURead(:,1)*1e-9;
 Tout  = Tout - Tout(1,1); % set initial time as 0s
 error = zeros(length(Tout));
 L = zeros(size(Tout));
+
+
+% figure
+% subplot(1,2,1)
+% plot(Tout,IMURead(:,2:4))
+% xlim([0,100])
+% xlabel('t(s)')
+% ylabel('Gyroscope')
+% subplot(1,2,2)
+% plot(Tout,IMURead(:,5:7))
+% xlim([0,100])
+% xlabel('t(s)')
+% ylabel('Accelerometer')
+% set(gcf, 'Renderer', 'Painters');
+% print('-depsc','IMURead.eps')
+
+
 
 phatout = zeros(length(Tout),3); 
 mhatout = zeros(length(Tout),3*(N-1));
@@ -120,12 +137,14 @@ for k=1:length(Tout)
     
     % virtual output
     p1      = Map(:,1);
+   
+    
     eL(:,1) = (eye(3)-xL(:,1)*xL(:,1)')*Rc'*(Rhat'*(p1-phat)-pL);
     eR(:,1) = (eye(3)-xR(:,1)*xR(:,1)')*Rc'*(Rhat'*(p1-phat)-pR);  
     y(1:3,1) =  Rc*(eL(:,1)+eR(:,1));
     PI(:,1:3) = Rc*(eye(3)-xL(:,1)*xL(:,1)'+eye(3)-xR(:,1)*xR(:,1)')*Rc';
     
- 
+%      p1 = mean(Map(:,2:end),2);
     
     for i=2:N      
         i3        = 3*(i-1);
@@ -153,34 +172,37 @@ for k=1:length(Tout)
     C   = [PI(:,1:3) zeros(3) zeros(3) zeros(3,3*(N-1)); 
            PI(:,4:end)' zeros(3*(N-1),6) -TempPI]; 
 
-    [row,~] = size(C);
-    Q  = 0.00001*diag([[0.1 0.1 0.1] 0.1*ones(1,row-3)]);%0.8*eye(row); %
-    V  = 1000*diag([1 1 1 1*ones(1,6+3*(N-1))]);%   5*eye(size(P));% 
-   
+    [row,~] = size(C); 
+    
+%     V  = 10*diag([1*ones(1,6) 0.1*ones(1,3+3*(N-1))]);%   5*eye(size(P));% 
+     Q = 1000*eye(row);
+     V  = 10*diag([2*ones(1,3) 2*ones(1,3) 1*ones(1,3) 0.1*ones(1,3*(N-1))]);%   5*eye(size(P)
     
 % %     Approach 1 works
-%     DP  = (A*P+P*A'-2*P*C'*Q*C*P+V);
+
+%     DP  = (A*P+P*A'-P*C'*Q*C*P+V);
 %     P = P + DP*dT;
 %     K = P*C'*Q;
 %     
 %     Approach 2 works (Runge-Kutta methods 4)
-%     DP1 = (A*P+P*A'-2*P*C'*Q*C*P+V);
+% Q = 0.001*eye(row);
+% V = 0.001*eye(6+3*N);
+%     DP1 = (A*P+P*A'-P*C'*Q*C*P+V);
 %     P1  = P + DP1*dT/2;
-%     DP2 = (A*P1+P1*A'-2*P1*C'*Q*C*P1+V);
+%     DP2 = (A*P1+P1*A'-P1*C'*Q*C*P1+V);
 %     P2  = P + DP2*dT/2;
-%     DP3 = (A*P2+P2*A'-2*P2*C'*Q*C*P2+V);
+%     DP3 = (A*P2+P2*A'-P2*C'*Q*C*P2+V);
 %     P3  = P + DP3*dT;
-%     DP4 = (A*P3+P3*A'-2*P3*C'*Q*C*P3+V);
+%     DP4 = (A*P3+P3*A'-P3*C'*Q*C*P3+V);
 %     P   = P + dT*(DP1+2*DP2+2*DP3+DP4)/6;
 %     K   = P*C'*Q;
 
 
 %     Approach 3 works
-     Ad = expm(A*dT); %discretized A matrix
-     
-     P  = Ad*P*Ad'+V;   
-     K  = P*C'/(C*P*C'+Q);
-     P  = (eye(size(P))-K*C)*P;
+%      Ad = expm(A*dT); %discretized A matrix     
+%      P  = Ad*P*Ad'+V;   
+%      K  = P*C'/(C*P*C'+Q);
+%      P  = (eye(size(P))-K*C)*P;
 %      eig(P)
 
 %       Approach 4 works
@@ -190,10 +212,12 @@ for k=1:length(Tout)
 %      TT = blkdiag(R,R,R,R,R,R,R);
 %      Ad = TT'*expm(Abar*dT)*TTold;
 %      TTold = TT;
-%      Ad = expm(A*dT);
-%      P  = Ad*P*Ad'+V;
-%      K  = P*C'/(C*P*C'+Q);
-%      P  = (eye(size(P))-K*C)*P;
+
+% dicretized CRE
+     Ad = expm(A*dT);
+     P  = Ad*P*Ad'+V;
+     K  = P*C'/(C*P*C'+eye(row)/Q);
+     P  = (eye(size(P))-K*C)*P;
 
     
 
@@ -203,7 +227,7 @@ for k=1:length(Tout)
     KI = 1*K(10:end,:);
 
     %% Dynamics 
-
+   
     % innovation terms 
     sigmaR = zeros(3,1);
     for i=2:N
@@ -212,7 +236,7 @@ for k=1:length(Tout)
      Kn = eye(N-1)/(N-1);
      M  = (Map(:,2:end)-p1)*Kn*(Map(:,2:end)-p1)';
      Mbar  = (trace(M)*eye(3)-M)/2;
-     kR    = 0.45/max(eig(Mbar));
+     kR    = 0.4/max(eig(Mbar));
      sigmaR = kR*sigmaR;
     
     
@@ -225,16 +249,16 @@ for k=1:length(Tout)
     
     
     % observer system
-    Omegahat = Omega-Rhat'*sigmaR;
-    Rhat  = Rhat*expm(Skew(Omegahat*dT));
-    phat  = phat + (vhat-sigmap)*dT;
-    vhat  = vhat + (rhat + Rhat*a-sigmav)*dT;
-    rhat  = rhat + (-sigmar)*dT;
+    Omegahat = Omega*dT-Rhat'*sigmaR;
+    Rhat  = Rhat*expm(Skew(Omegahat));
+    phat  = phat + (vhat*dT-sigmap);
+    vhat  = vhat + (rhat*dT + Rhat*a*dT-sigmav);
+    rhat  = rhat + (-sigmar);
     for i=2:N
         i3 = 3*(i-2);
         Ki = KI(i3+1:i3+3,:);
         sigmapi = Skew(sigmaR)*(mhat(:,i-1)-p1) - Rhat*Ki*y;
-        mhat(:,i-1) = mhat(:,i-1) + (-sigmapi)*dT; %Map(:,i);%
+        mhat(:,i-1) = mhat(:,i-1) + (-sigmapi); %Map(:,i);%
     end
      
     phatout(k,:) = phat';
@@ -254,12 +278,13 @@ clearvars -except Tout error  L viconRead Groundtruth phatout mhatout Map
 
 figure
 hold on
+index = 1:2:length(phatout);
 % plot3(viconRead(:,2),viconRead(:,3),viconRead(:,4)), hold on
-plot3(Groundtruth(:,2),Groundtruth(:,3),Groundtruth(:,4),'linewidth',1.0)
-plot3(phatout(:,1),phatout(:,2),phatout(:,3),'linewidth',1.0)
+plot3(Groundtruth(index,2),Groundtruth(index,3),Groundtruth(index,4),'linewidth',1.0)
+plot3(phatout(index,1),phatout(index,2),phatout(index,3),'linewidth',1.0)
 for i=1:size(Map,2)-1
     i3= 3*(i-1);
-    plot3(mhatout(:,i3+1),mhatout(:,i3+2),mhatout(:,i3+3),'c-.','linewidth',1)
+    plot3(mhatout(index,i3+1),mhatout(index,i3+2),mhatout(index,i3+3),'c-.','linewidth',1)
     plot3(Map(1,i+1),Map(2,i+1),Map(3,i+1),'k*','linewidth',1.0)
 end
 legend('Ground truth' ,'Estimated state','Estimated landmarks','Landmarks')
